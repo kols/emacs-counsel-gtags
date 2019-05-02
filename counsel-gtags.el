@@ -206,12 +206,12 @@ Otherwise, returns nil if couldn't find any."
 Used in `counsel-gtags--async-tag-query'.  Forward QUERY and EXTRA-ARGS to
 `counsel-gtags--command-options'.
 Since it's a tag query, we use definition as type when getting options"
-  (mapconcat #'shell-quote-argument
-	         (append
-	          `("global")
-	          (counsel-gtags--command-options 'definition t extra-args)
-	          `(,(counsel--elisp-to-pcre (ivy--regex query))))
-	         " "))
+  (string-join
+   (append
+	`("global")
+	(counsel-gtags--command-options 'definition t extra-args)
+	`(,(counsel--elisp-to-pcre (ivy--regex query))))
+   " "))
 
 (defun counsel-gtags--async-tag-query-process (query)
   "Add filter to tag query command.
@@ -307,13 +307,15 @@ This is the `:action' callback for `ivy-read' calls."
 (defun counsel-gtags--read-tag-ivy-parameters (type)
   "Get `counsel-gtags--read-tag' the parameters from TYPE to call `ivy-read'."
   `(,(assoc-default type counsel-gtags--prompts)
-    counsel-gtags--async-tag-query
+    ,(apply 'counsel--command
+            (split-string
+             (counsel-gtags--build-command-to-collect-candidates "" '("--result=ctags"))
+             " "
+             t))
     :initial-input ,(and counsel-gtags-use-input-at-point
-			 (thing-at-point 'symbol))
+			             (thing-at-point 'symbol))
     :unwind ,(lambda ()
-	       (counsel-delete-process)
-	       (swiper--cleanup))
-    :dynamic-collection t))
+               (swiper--cleanup))))
 
 (defun counsel-gtags--read-tag (type)
   "Prompt the user for selecting a tag using `ivy-read'.
@@ -327,10 +329,20 @@ initial input for `ivy-read'.
 TYPE ∈ `counsel-gtags--prompts'
 
 See `counsel-gtags--async-tag-query' for more info."
-  (apply 'ivy-read
-	 (plist-put
-	  (counsel-gtags--read-tag-ivy-parameters type)
-	  :caller 'counsel-gtags--read-tag)))
+  (ivy-read
+   (assoc-default type counsel-gtags--prompts)
+   (split-string
+    (apply 'counsel--command
+           (split-string
+            (counsel-gtags--build-command-to-collect-candidates "" '("--result=ctags"))
+            " "
+            t)))
+   :initial-input (and counsel-gtags-use-input-at-point
+			           (thing-at-point 'symbol))
+   :unwind (lambda ()
+             (counsel-delete-process)
+             (swiper--cleanup))
+   :caller 'counsel-gtags--read-tag))
 
 
 
