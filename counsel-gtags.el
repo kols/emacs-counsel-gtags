@@ -151,18 +151,20 @@ Kept free of whitespaces."
 	(error "Unexpected counsel-gtags-path-style: %s"
 	       (symbol-name counsel-gtags-path-style))))))
 
-(defun counsel-gtags--command-options (type &optional extra-options)
+(defun counsel-gtags--command-options (type completion &optional extra-options)
   "Get list with options for global command according to TYPE.
 
 Prepend EXTRA-OPTIONS.  If \"--result=.\" is in EXTRA-OPTIONS, it will have
 precedence over default \"--result=grep\"."
   (let* ((options extra-options)
-	 (has-result (seq-filter (lambda (opt)
-				   (and (stringp opt)
-					(string-prefix-p "--result=" opt)))
-				 options)))
+	     (has-result (seq-filter (lambda (opt)
+				                   (and (stringp opt)
+					                    (string-prefix-p "--result=" opt)))
+				                 options)))
     (unless has-result
       (setq options (append '("--result=grep") options)))
+    (when completion
+      (setq options (append '("-c") options)))
     (let ((opt (assoc-default type counsel-gtags--complete-options)))
       (when opt
         (push opt options)))
@@ -205,18 +207,11 @@ Used in `counsel-gtags--async-tag-query'.  Forward QUERY and EXTRA-ARGS to
 `counsel-gtags--command-options'.
 Since it's a tag query, we use definition as type when getting options"
   (mapconcat #'shell-quote-argument
-	     (append
-	      `("global")
-	      (counsel-gtags--command-options 'definition extra-args)
-	      `(,(counsel--elisp-to-pcre (ivy--regex query))))
-	     " "))
-(defun counsel-gtags--filter-tags (s)
-  "Filter function receving S.
-
-Extract the first part of each line, containing the tag."
-  (replace-regexp-in-string (rx (char space) (* any) line-end)
-			    ""
-			    s))
+	         (append
+	          `("global")
+	          (counsel-gtags--command-options 'definition t extra-args)
+	          `(,(counsel--elisp-to-pcre (ivy--regex query))))
+	         " "))
 
 (defun counsel-gtags--async-tag-query-process (query)
   "Add filter to tag query command.
@@ -228,8 +223,7 @@ the location, giving us a list of tags with no locations."
   (counsel--async-command
    (counsel-gtags--build-command-to-collect-candidates query '("--result=ctags"))
    nil ;; default sentinel
-   (lambda (p s)
-     (counsel--async-filter p (counsel-gtags--filter-tags s)))))
+   ))
 
 (defun counsel-gtags--async-tag-query (query)
   "Gather the object names asynchronously for `ivy-read'.
@@ -246,7 +240,7 @@ Inspired on ivy.org's `counsel-locate-function'."
    (ivy-more-chars)
    (progn
      (counsel-gtags--async-tag-query-process query)
-     '("" "Filtering …"))))
+     nil)))
 
 (defun counsel-gtags--file-and-line (candidate)
   "Return list with file and position per CANDIDATE.
@@ -383,16 +377,16 @@ Use ENCODING to specify encoding.
 Use EXTRA-OPTIONS to specify encoding.
 
 This is for internal use and not for final user."
-  (let* ((options (counsel-gtags--command-options type extra-options))
+  (let* ((options (counsel-gtags--command-options type nil extra-options))
          (default-directory default-directory)
          (coding-system-for-read encoding)
          (coding-system-for-write encoding)
-	 (query-as-list (pcase tagname
-			  ((pred null) '())
-			  ("" '())
-			  (`definition '())
-			  (_ (list tagname))))
-	 (global-args (append (reverse options) query-as-list)))
+	     (query-as-list (pcase tagname
+			              ((pred null) '())
+			              ("" '())
+			              (`definition '())
+			              (_ (list tagname))))
+	     (global-args (append (reverse options) query-as-list)))
     (apply #'counsel-gtags--process-lines "global" global-args)))
 
 (defun counsel-gtags--select-file-ivy-parameters (type tagname extra-options auto-select-only-candidate)
